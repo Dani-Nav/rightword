@@ -17,14 +17,24 @@ st.markdown("""
     Escolha o tipo de mensagem, preencha os detalhes contextuais e receba uma mensagem pronta para enviar.
 """)
 
-# Função para fazer requisição à API do Hugging Face
+# Função para fazer requisição à API do Deepseek via Hugging Face
 def generate_message(prompt, token):
-    API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
+    API_URL = "https://router.huggingface.co/novita/v3/openai/chat/completions"
     headers = {"Authorization": f"Bearer {token}"}
     
     payload = {
-        "inputs": prompt,
-        "parameters": {"max_length": 200}
+        "messages": [
+            {
+                "role": "system",
+                "content": "Você é um assistente especializado em criar mensagens personalizadas. Sua tarefa é gerar mensagens claras, empáticas e bem escritas com base nas instruções do usuário."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "max_tokens": 512,
+        "model": "deepseek/deepseek-prover-v2-671b"
     }
     
     response = requests.post(API_URL, headers=headers, json=payload)
@@ -64,10 +74,11 @@ with st.sidebar:
             hf_token = ""
             st.error("Token não encontrado. Por favor, insira seu token manualmente.")
     
-    # Créditos
+    # Informações do modelo
     st.markdown("---")
     st.markdown("### Sobre")
-    st.markdown("Desenvolvido com ❤️ e IA")
+    st.markdown("Desenvolvido com ❤️ usando o modelo Deepseek")
+    st.markdown("Modelo: deepseek/deepseek-prover-v2-671b")
     st.markdown("[GitHub do Projeto](https://github.com/seu-usuario/palavra-certa)")
 
 # Área principal
@@ -121,34 +132,43 @@ if st.button("✨ Gerar Mensagem", type="primary", use_container_width=True):
     if all(field_values.values()) and hf_token:
         with st.spinner("Gerando mensagem personalizada..."):
             # Construir o prompt para a IA
-            prompt = f"Gere uma mensagem de {message_type.lower()} "
+            prompt = f"""Por favor, crie uma mensagem de {message_type.lower()} com as seguintes características:
+
+Detalhes:
+"""
             
             for field, value in field_values.items():
-                prompt += f"para {field.replace('_', ' ')}: '{value}', "
+                prompt += f"- {field.replace('_', ' ').title()}: {value}\n"
             
-            prompt += f"que será enviada por {meio}. "
-            prompt += f"A mensagem deve ser {message_length.lower()}."
+            prompt += f"\nMeio de envio: {meio}\n"
             
             # Ajustar comprimento de acordo com a opção
             if message_length == "Curta":
-                prompt += " Use no máximo 3 frases."
+                prompt += "Comprimento: Curta (máximo 3 frases)\n"
             elif message_length == "Média":
-                prompt += " Use entre 4 e 6 frases."
+                prompt += "Comprimento: Média (entre 4 e 6 frases)\n"
             else:
-                prompt += " Use entre 7 e 10 frases, com detalhes."
+                prompt += "Comprimento: Longa (entre 7 e 10 frases, com detalhes)\n"
+                
+            prompt += "\nCrie uma mensagem pronta para ser enviada, sem comentários adicionais. A mensagem deve ser empática, clara e adequada ao contexto."
             
             try:
                 # Fazer requisição à API
                 result = generate_message(prompt, hf_token)
                 
-                if isinstance(result, list) and len(result) > 0:
-                    message = result[0].get('generated_text', '')
+                # Extrair a mensagem da resposta do Deepseek
+                if "choices" in result and len(result["choices"]) > 0:
+                    message = result["choices"][0]["message"]["content"]
                 else:
-                    message = result.get('generated_text', '')
+                    message = ""
+                    
+                    # Verificar se há um erro específico na resposta
+                    if "error" in result:
+                        st.error(f"Erro da API: {result['error']['message']}")
+                    else:
+                        st.error("Não foi possível gerar a mensagem. Verifique o token e tente novamente.")
                 
-                if not message:
-                    st.error("Não foi possível gerar a mensagem. Verifique o token e tente novamente.")
-                else:
+                if message:
                     # Exibir resultado em um contêiner estilizado
                     st.subheader("Mensagem Gerada:")
                     st.markdown("---")
