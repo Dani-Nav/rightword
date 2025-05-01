@@ -17,10 +17,14 @@ st.markdown("""
     Escolha o tipo de mensagem, preencha os detalhes contextuais e receba uma mensagem pronta para enviar.
 """)
 
-# Função para fazer requisição à API do Deepseek via Hugging Face
-def generate_message(prompt, token):
+# Função para fazer requisição à API do Deepseek via Hugging Face (formato curl)
+def generate_message(prompt, token, max_tokens=512):
     API_URL = "https://router.huggingface.co/novita/v3/openai/chat/completions"
-    headers = {"Authorization": f"Bearer {token}"}
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
     
     payload = {
         "messages": [
@@ -33,8 +37,9 @@ def generate_message(prompt, token):
                 "content": prompt
             }
         ],
-        "max_tokens": 512,
-        "model": "deepseek/deepseek-prover-v2-671b"
+        "max_tokens": max_tokens,
+        "model": "deepseek/deepseek-prover-v2-671b",
+        "stream": False
     }
     
     response = requests.post(API_URL, headers=headers, json=payload)
@@ -63,22 +68,35 @@ with st.sidebar:
     st.header("Configurações")
     
     # Opção para inserir token próprio
+    st.markdown("""
+    ### Token da Hugging Face
+    O modelo Deepseek requer um token válido da Hugging Face com acesso ao serviço.
+    """)
+    
     use_custom_token = st.checkbox("Usar meu próprio token da Hugging Face")
     
     if use_custom_token:
-        hf_token = st.text_input("Token da Hugging Face", type="password")
+        hf_token = st.text_input("Token da Hugging Face", type="password", 
+                                help="Insira seu token da Hugging Face com acesso ao modelo Deepseek")
     else:
         try:
             hf_token = st.secrets["huggingface"]["token"]
+            st.success("✅ Token configurado via Streamlit Secrets")
         except:
             hf_token = ""
-            st.error("Token não encontrado. Por favor, insira seu token manualmente.")
+            st.error("⚠️ Token não encontrado. Por favor, insira seu token manualmente.")
+            st.info("Para obter um token, acesse huggingface.co e crie uma conta.")
+    
+    # Configurações do modelo
+    st.markdown("### Configurações do Modelo")
+    st.markdown("**Modelo:** deepseek/deepseek-prover-v2-671b")
+    max_tokens = st.slider("Máximo de tokens", min_value=128, max_value=1024, value=512, step=64,
+                         help="Número máximo de tokens na resposta gerada")
     
     # Informações do modelo
     st.markdown("---")
     st.markdown("### Sobre")
     st.markdown("Desenvolvido com ❤️ usando o modelo Deepseek")
-    st.markdown("Modelo: deepseek/deepseek-prover-v2-671b")
     st.markdown("[GitHub do Projeto](https://github.com/seu-usuario/palavra-certa)")
 
 # Área principal
@@ -154,21 +172,16 @@ Detalhes:
             
             try:
                 # Fazer requisição à API
-                result = generate_message(prompt, hf_token)
+                with st.spinner("Gerando mensagem personalizada..."):
+                    result = generate_message(prompt, hf_token, max_tokens)
                 
-                # Extrair a mensagem da resposta do Deepseek
-                if "choices" in result and len(result["choices"]) > 0:
+                # Verificar se a requisição foi bem-sucedida
+                if response_status := result.get("error"):
+                    st.error(f"Erro na API: {response_status}")
+                    st.info("Verifique se o token da Hugging Face é válido e tem acesso ao modelo Deepseek.")
+                elif "choices" in result and len(result["choices"]) > 0:
                     message = result["choices"][0]["message"]["content"]
-                else:
-                    message = ""
                     
-                    # Verificar se há um erro específico na resposta
-                    if "error" in result:
-                        st.error(f"Erro da API: {result['error']['message']}")
-                    else:
-                        st.error("Não foi possível gerar a mensagem. Verifique o token e tente novamente.")
-                
-                if message:
                     # Exibir resultado em um contêiner estilizado
                     st.subheader("Mensagem Gerada:")
                     st.markdown("---")
@@ -192,6 +205,12 @@ Detalhes:
                         </button>
                     </div>
                     """, unsafe_allow_html=True)
+                else:
+                    st.error("A API retornou uma resposta vazia ou em formato inesperado.")
+                    st.json(result)  # Mostrar o resultado para debug
+            except Exception as e:
+                st.error(f"Erro ao processar a requisição: {str(e)}")
+                st.info("Verifique sua conexão com a internet e se o token da Hugging Face está configurado corretamente.")
             except Exception as e:
                 st.error(f"Erro ao gerar mensagem: {str(e)}")
     else:
